@@ -10,6 +10,7 @@ export function buildAvatar(d) {
 
   // Piernas
   const legs = [];
+  const legMeshes = [];
   for (const s of [-1, 1]) {
     const hip = new THREE.Group(); hip.position.set(s * 0.115, 0.95, 0); g.add(hip);
     hip.add(mesh(new THREE.CapsuleGeometry(0.105, 0.68, 6, 14), pants, 0, -0.42, 0));
@@ -18,7 +19,7 @@ export function buildAvatar(d) {
     const sh = mesh(new THREE.CapsuleGeometry(0.095, 0.16, 6, 14), shoe, 0, -0.9, 0.06); sh.rotation.x = Math.PI / 2; sh.scale.set(1, 1, 0.8);
     hip.add(sh);
     const sole = mesh(new THREE.BoxGeometry(0.2, 0.035, 0.36), std(0xeeeeee, 0.9), 0, -0.965, 0.07); hip.add(sole);
-    legs.push(hip);
+    legs.push(hip); legMeshes.push(hip);
   }
 
   // Torso (sudadera) y cadera
@@ -64,38 +65,44 @@ export function buildAvatar(d) {
   const mouth = mesh(new THREE.TorusGeometry(0.05, 0.009, 8, 20, Math.PI), std(0x8a3b3b, 0.5), 0, -0.13, 0.285);
   mouth.rotation.z = Math.PI; mouth.castShadow = false; head.add(mouth);
 
-  // Pelo
-  const cap = mesh(new THREE.SphereGeometry(0.325, 36, 24, 0, Math.PI * 2, 0, Math.PI * 0.55), hair); cap.scale.set(1, 1.06, 1.0); cap.position.y = 0.02; cap.rotation.x = -0.18; head.add(cap);
+  // Pelo: casquete ceñido + mechones laterales y flequillo (no casco)
+  const cap = mesh(new THREE.SphereGeometry(0.325, 32, 20, 0, Math.PI * 2, 0, Math.PI * 0.52), hair);
+  cap.scale.set(1, 1, 0.95); cap.position.y = 0.04; cap.rotation.x = -0.1; head.add(cap);
+  for (const s of [-1, 1]) {
+    const mechon = mesh(new THREE.CapsuleGeometry(0.08, 0.5, 8, 12), hair, s * 0.19, 0.06, -0.03);
+    mechon.rotation.z = s * 0.25; mechon.rotation.x = 0.15; head.add(mechon);
+  }
+  const flequillo = mesh(new THREE.SphereGeometry(0.285, 22, 16, 0, Math.PI * 2, 0.42, 0.55), hair);
+  flequillo.position.set(0, 0.055, 0.13); flequillo.rotation.x = -0.35; head.add(flequillo);
   const st = d.peloEstilo;
   if (st === 'cola') {
     const c = mesh(new THREE.CapsuleGeometry(0.07, 0.42, 6, 12), hair, 0, 0.0, -0.4); c.rotation.x = -0.25; head.add(c);
     head.add(mesh(new THREE.SphereGeometry(0.075, 12, 10), std(0xd04a6a, 0.6), 0, 0.18, -0.34));
-    const fl = mesh(new THREE.SphereGeometry(0.31, 24, 16, 0, Math.PI * 2, 0.3, 0.5), hair); fl.position.set(0, 0.03, 0.04); fl.scale.set(1, 1, 1.05); head.add(fl);
   } else if (st === 'larga') {
-    const b = mesh(new THREE.CapsuleGeometry(0.3, 0.5, 6, 16), hair, 0, -0.2, -0.1); b.scale.set(1, 1, 0.55); head.add(b);
-    for (const s of [-1, 1]) head.add(mesh(new THREE.CapsuleGeometry(0.06, 0.4, 6, 12), hair, s * 0.28, -0.15, 0.05));
+    const b = mesh(new THREE.CapsuleGeometry(0.3, 0.5, 6, 16), hair, 0, -0.25, -0.1); b.scale.set(1, 1, 0.5); head.add(b);
+    for (const s of [-1, 1]) head.add(mesh(new THREE.CapsuleGeometry(0.06, 0.4, 6, 12), hair, s * 0.28, -0.18, 0.02));
   } else if (st === 'moño') {
-    head.add(mesh(new THREE.SphereGeometry(0.13, 18, 14), hair, 0, 0.34, -0.05));
-    const fl = mesh(new THREE.SphereGeometry(0.31, 24, 16, 0, Math.PI * 2, 0.35, 0.45), hair); fl.position.set(0, 0.03, 0.04); head.add(fl);
+    head.add(mesh(new THREE.SphereGeometry(0.13, 18, 14), hair, 0, 0.36, -0.08));
   } else if (st === 'rizo') {
     for (let i = 0; i < 26; i++) {
-      const a = Math.random() * Math.PI * 2, e = Math.random() * 0.9;
-      const r = 0.3; const x = Math.sin(e) * Math.cos(a) * r, y = Math.cos(e) * r * 1.05, z = Math.sin(e) * Math.sin(a) * r - 0.04;
+      const aa = Math.random() * Math.PI * 2, e = Math.random() * 0.9;
+      const r = 0.3; const x = Math.sin(e) * Math.cos(aa) * r, y = Math.cos(e) * r * 1.05, z = Math.sin(e) * Math.sin(aa) * r - 0.04;
       if (z > 0.18 && y < 0.2) continue;
       head.add(mesh(new THREE.SphereGeometry(0.08, 10, 8), hair, x, y + 0.04, z));
     }
-  } else { // corto: flequillo
-    const fl = mesh(new THREE.SphereGeometry(0.31, 24, 16, 0, Math.PI * 2, 0.35, 0.4), hair); fl.position.set(0, 0.04, 0.03); head.add(fl);
   }
 
   g.traverse(o => { if (o.isMesh) o.receiveShadow = false; });
   const blinkAt = 2 + Math.random() * 3;
   return {
     group: g,
+    legs: legMeshes,
     update(t, waving) {
       torso.scale.set(1, 1 + Math.sin(t * 1.8) * 0.012, 1 + Math.sin(t * 1.8) * 0.02);
       head.rotation.y = Math.sin(t * 0.7) * 0.18; head.rotation.x = Math.sin(t * 0.9) * 0.03;
       arms[0].rotation.z = -0.12 - Math.sin(t * 1.2) * 0.04;
+      const paso = Math.sin(t * 7) * 0.25;
+      legs[0].rotation.x = paso; legs[1].rotation.x = -paso;
       if (waving) { arms[1].rotation.z = Math.PI * 0.82 + Math.sin(t * 9) * 0.3; }
       else { arms[1].rotation.z += (0.12 + Math.sin(t * 1.2 + 1) * 0.04 - arms[1].rotation.z) * 0.1; }
       const k = ((t + blinkAt) % 4.2) < 0.12 ? 0.1 : 1;

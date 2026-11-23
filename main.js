@@ -60,6 +60,7 @@ gente.forEach((d, i) => {
   a.group.position.set(Math.cos(ang) * R, 0, Math.sin(ang) * R);
   a.group.rotation.y = Math.atan2(-Math.cos(ang), -Math.sin(ang));
   a.base = a.group.rotation.y; a.fase = i * 1.3; a.data = d;
+  a.home = a.group.position.clone(); a.ang = ang;
   island.add(a.group); avatars.push(a);
 });
 
@@ -112,8 +113,14 @@ function loop() {
   camera.position.set(target.x + Math.sin(theta) * Math.sin(phi) * dist, target.y + Math.cos(phi) * dist, target.z + Math.cos(theta) * Math.sin(phi) * dist);
   camera.lookAt(target);
   space.update(t);
-  avatars.forEach(a => a.update(t + a.fase, a === sel));
-  island.position.y = Math.sin(t * 0.5) * 0.12;
+  avatars.forEach((a, i) => {
+    a.walkPhase = (a.walkPhase || 0) + dt * (0.03 + (i % 3) * 0.012);
+    const mx = Math.cos(a.walkPhase) * 1.3, mz = Math.sin(a.walkPhase * 1.1) * 1.3;
+    const goal = a.home.clone().add(new THREE.Vector3(mx, 0, mz));
+    a.group.position.lerp(goal, 0.05);
+    a.group.rotation.y = a.base + Math.atan2(mx, mz) * 0.5;
+    a.update(t + a.fase, a === sel);
+  });
   renderer.render(scene, camera);
   requestAnimationFrame(loop);
 }
