@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Universo de Mundos</title>
+<style>
+html,body{margin:0;height:100%;background:#02030a;overflow:hidden;font-family:system-ui,sans-serif;color:#e8eefc}
+canvas{display:block}
+#hud{position:fixed;left:16px;top:14px;pointer-events:none}
+#hud h1{margin:0;font-size:20px;font-weight:600;letter-spacing:.5px}
+#hud p{margin:4px 0 0;font-size:12px;opacity:.7}
+#chars{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);display:flex;gap:8px;flex-wrap:wrap;justify-content:center;max-width:92vw}
+#chars button{border:1px solid #ffffff30;background:#0b1224cc;color:#e8eefc;border-radius:20px;padding:7px 14px;font-size:13px;cursor:pointer}
+#chars button.on{background:#3b82f6;border-color:#7db0ff}
+#card{position:fixed;right:16px;top:14px;width:230px;background:#0b1224cc;border:1px solid #ffffff25;border-radius:14px;padding:12px 14px;font-size:13px;display:none}
+#card b{font-size:16px}
+</style></head><body>
+<div id="hud"><h1>Universo de Mundos</h1><p>Arrastrá para girar · rueda para acercar · tocá un personaje</p></div>
+<div id="card"></div><div id="chars"></div>
+<script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js"}}</script>
+<script type="module" src="main.js"></script>
+</body></html>
