@@ -10,9 +10,9 @@ canvas{display:block;touch-action:none}
 #ayuda{margin:2px 0 0;font-size:11px;opacity:.65}
 .btn{position:fixed;left:10px;border:1px solid #7db0ff;background:#0b1224cc;color:#e8eefc;border-radius:20px;padding:7px 14px;font-size:12px;cursor:pointer;z-index:25}
 .btn:hover{border-color:#bcd6ff;background:#13204acc}
-#atras{top:90px;display:none}
+#atras{top:128px;display:none}
 #entrar{bottom:14px;display:none}
-#btnMitos{top:130px;display:none}
+#btnMitos{top:166px;display:none}
 #chars{position:fixed;left:50%;bottom:10px;transform:translateX(-50%);display:none;gap:7px;flex-wrap:wrap;justify-content:center;max-width:94vw;z-index:22}
 #chars button{border:1px solid #ffffff30;background:#0b1224cc;color:#e8eefc;border-radius:20px;padding:6px 12px;font-size:12px;cursor:pointer}
 #chars button.on{background:#3b82f6;border-color:#7db0ff}
@@ -428,12 +428,12 @@ function callarse(){if(!mitosActivos)return;silencios++;personas.forEach(p=>{if(
 function agregarMemoriaGlobal(desc){personas.forEach(p=>agregarMemoria(p,desc,'mundo'));}
 /* Paneles del Creador */
 const estiloBtn='padding:6px 11px;border-radius:14px;border:1px solid #7db0ff;background:#0b1224dd;color:#e8eefc;cursor:pointer;font-size:12px;text-align:left';
-const btnMenu=document.createElement('button');btnMenu.textContent='Milagros';btnMenu.className='btn';btnMenu.style.top='170px';btnMenu.style.display='none';document.body.appendChild(btnMenu);
-const menuCreador=document.createElement('div');menuCreador.style.cssText='position:fixed;left:10px;top:212px;z-index:25;display:none;gap:5px;flex-direction:column;';
+const btnMenu=document.createElement('button');btnMenu.textContent='Milagros';btnMenu.className='btn';btnMenu.style.top='204px';btnMenu.style.display='none';document.body.appendChild(btnMenu);
+const menuCreador=document.createElement('div');menuCreador.style.cssText='position:fixed;left:10px;top:246px;z-index:25;display:none;gap:5px;flex-direction:column;';
 menuCreador.innerHTML=[['lluvia','🌧 Lluvia'],['cosecha','🌾 Cosecha'],['sanacion','✨ Sanación'],['señal','☄ Señal en el cielo'],['c:banco','🪑 Construir banco'],['c:farol','💡 Construir farol'],['c:altar','🗿 Construir altar'],['c:cabaña','🏠 Construir cabaña']].map(([k,t])=>`<button data-k="${k}" style="${estiloBtn}">${t}</button>`).join('');document.body.appendChild(menuCreador);
 btnMenu.onclick=()=>{menuCreador.style.display=menuCreador.style.display==='none'?'flex':'none';};
 menuCreador.querySelectorAll('button').forEach(b=>{b.onclick=()=>{const k=b.dataset.k;if(k.startsWith('c:'))construir(k.slice(2));else milagro(k);menuCreador.style.display='none';};});
-const panelMitos=document.createElement('div');panelMitos.style.cssText='position:fixed;left:96px;top:130px;z-index:25;display:none;gap:6px;';
+const panelMitos=document.createElement('div');panelMitos.style.cssText='position:fixed;left:96px;top:166px;z-index:25;display:none;gap:6px;';
 panelMitos.innerHTML=`<button id="mtRev" style="${estiloBtn}">Revelar la verdad</button><button id="mtCal" style="${estiloBtn}">Callar</button>`;document.body.appendChild(panelMitos);
 document.getElementById('btnMitos').onclick=()=>setMitos(!mitosActivos);document.getElementById('mtRev').onclick=revelarVerdad;document.getElementById('mtCal').onclick=callarse;
 function actualizarPanelCreador(){const enMundo=modo==='mundo'||modo==='ser';panelMitos.style.display=mitosActivos&&enMundo&&soberano?'flex':'none';btnMenu.style.display=enMundo?'block':'none';if(!enMundo)menuCreador.style.display='none';}
