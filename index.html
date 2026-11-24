@@ -34,9 +34,10 @@ canvas{display:block;touch-action:none}
 <div id="etiquetas"></div><div id="burbujas"></div><div id="card"></div><div id="chars"></div>
 <div id="webglMsg"><div>WebGL no disponible</div><div style="font-size:12px;opacity:.8;margin-top:6px">Intenta con el lanzador “Chrome (WebGL) — WareTrack” o cierra otras pestañas y recarga.</div><button id="btnRecarga">Recargar</button></div>
 <canvas id="minimapa" width="150" height="150" style="position:fixed;left:10px;bottom:70px;width:150px;height:150px;border:1px solid #7db0ff;background:#0b1224cc;border-radius:10px;cursor:crosshair;z-index:25;display:none"></canvas>
-<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.187.0/build/three.module.js"}}</script>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.187.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.187.0/examples/jsm/"}}</script>
 <script type="module">
 import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 window.THREE=THREE;
 /* ============================================================
    UNIVERSO DE MUNDOS — archivo único, sin build; Three.js local (node_modules, versión fija 0.187.0; CDN alternativo: https://unpkg.com/three@0.160.0/build/three.module.js)
@@ -420,7 +421,140 @@ function buildAvatar(d){
     if(melena){[W.colaA,W.colaV]=resorte(W.colaA,W.colaV,0.05*wk+Math.cos(ph*2)*0.04*wk-cabeza.rotation.x*0.5,dt,70,8);
       [W.colaZ,W.colaVZ]=resorte(W.colaZ,W.colaVZ,-giro*0.12-pelvis.rotation.z,dt,50,7);melena.rotation.set(W.colaA,0,clamp(W.colaZ,-0.3,0.3));}
   }
-  return{group:g,update,cabeza,boca,ojos,W};
+  return{group:g,update,cabeza,boca,ojos,W,huesos:{pelvis,torso,cabeza,piernas,brazos}};
+}
+/* ---------- Personajes con modelo 3D de verdad (GLB hecho con IA a partir de una imagen) ----------
+   El GLB viene sin esqueleto: acá se le arma uno solo (proporciones de pose A + color de la textura para separar
+   pelo / piel / ropa) y cada hueso copia el movimiento del avatar de formas, que sigue corriendo invisible por debajo.
+   Así camina, saluda, gesticula y mira igual que los demás. Si el modelo no carga, queda el avatar de formas. */
+const MODELOS={};
+function cargarModelo(url){
+  if(!MODELOS[url])MODELOS[url]=new Promise((ok,mal)=>new GLTFLoader().load(url,gl=>{
+    let malla=null;gl.scene.traverse(o=>{if(o.isMesh&&!malla)malla=o;});
+    if(!malla)return mal(new Error('GLB sin malla'));
+    malla.updateWorldMatrix(true,false);
+    const geo=malla.geometry.clone();geo.applyMatrix4(malla.matrixWorld);geo.computeBoundingBox();
+    const bb=geo.boundingBox,alto=bb.max.y-bb.min.y,cx=(bb.max.x+bb.min.x)/2,cz=(bb.max.z+bb.min.z)/2;
+    // Normalizado: pies en y=0, alto 1, centrado en x/z (las articulaciones de abajo están en estas unidades).
+    geo.translate(-cx,-bb.min.y,-cz);geo.scale(1/alto,1/alto,1/alto);
+    if(!geo.attributes.normal)geo.computeVertexNormals();
+    const mapa=malla.material.map;
+    ok({geo,mapa,pix:leerTextura(mapa)});
+  },undefined,mal));
+  return MODELOS[url];
+}
+function leerTextura(mapa){
+  const img=mapa&&mapa.image;if(!img)return null;
+  const w=256,h=256,c=document.createElement('canvas');c.width=w;c.height=h;const cx=c.getContext('2d',{willReadFrequently:true});
+  cx.drawImage(img,0,0,w,h);const d=cx.getImageData(0,0,w,h).data;
+  return(u,v)=>{const x=Math.min(w-1,Math.max(0,Math.floor(u*w))),y=Math.min(h-1,Math.max(0,Math.floor((mapa.flipY?1-v:v)*h)));const i=(y*w+x)*4;return[d[i]/255,d[i+1]/255,d[i+2]/255];};
+}
+const sstep=(a,b,x)=>{const t=Math.min(1,Math.max(0,(x-a)/(b-a)));return t*t*(3-2*t);};
+// Articulaciones en unidades del modelo (alto 1, mirando a +Z). s=+1 es el lado x>0.
+const ART={pelvis:[0,0.50,0.01],spine:[0,0.56,0],chest:[0,0.68,-0.01],head:[0,0.80,0],
+  sho:[0.09,0.75,0],elb:[0.118,0.62,0],wri:[0.135,0.50,0.01],tip:[0.147,0.385,0.02],
+  hip:[0.045,0.49,0.02],knee:[0.047,0.29,0.03],ank:[0.05,0.06,0.03]};
+const HUESOS=['root','pelvis','spine','chest','head','shoR','elbR','wriR','shoL','elbL','wriL','hipR','kneeR','ankR','hipL','kneeL','ankL'];
+const HI=Object.fromEntries(HUESOS.map((n,i)=>[n,i]));
+function distSeg(p,a,b){const abx=b[0]-a[0],aby=b[1]-a[1],abz=b[2]-a[2];const t=Math.min(1,Math.max(0,((p[0]-a[0])*abx+(p[1]-a[1])*aby+(p[2]-a[2])*abz)/(abx*abx+aby*aby+abz*abz)));
+  return Math.hypot(p[0]-a[0]-abx*t,p[1]-a[1]-aby*t,p[2]-a[2]-abz*t);}
+function esBrazoGeo(x,h,z){
+  if(h<=0.36||h>=0.79||z<=-0.07||Math.abs(x)<=0.085)return 0;const s=x>=0?1:-1,m=(P)=>[P[0]*s,P[1],P[2]],p=[x,h,z];
+  const d=Math.min(distSeg(p,m(ART.sho),m(ART.elb)),distSeg(p,m(ART.elb),m(ART.wri)),distSeg(p,m(ART.wri),m(ART.tip)));
+  return (1-sstep(0.03,0.05,d))*sstep(0.085,0.1,Math.abs(x));
+}
+function colorBrazo(col){if(!col)return 1;const [r,g,b]=col,lum=0.3*r+0.59*g+0.11*b,sat=Math.max(r,g,b)-Math.min(r,g,b);
+  if(lum<0.5&&r>b*1.15)return 0;if(lum>0.55&&sat<0.07)return 0;return 1;}
+function pesosVertice(x,h,z,col,esBrazo){
+  const W=new Map();const add=(n,w)=>{if(w>1e-4)W.set(HI[n],(W.get(HI[n])||0)+w);};
+  const [r,g,b]=col||[1,1,1];const lum=0.3*r+0.59*g+0.11*b;
+  const pelo=col&&lum<0.5&&r>b*1.15;           // castaño oscuro
+  const sat=Math.max(r,g,b)-Math.min(r,g,b),blanco=col&&lum>0.5&&sat<0.13;   // vestido (y sus pliegues grises)
+  const s=x>=0?1:-1,S=s>0?'R':'L',ax=Math.abs(x);
+  const m=(P)=>[P[0]*s,P[1],P[2]];
+  // Brazos (el pelo nunca se pega a los brazos)
+  let brazo=0;
+  // Brazos descubiertos: solo piel (o el brazalete dorado) cerca del eje del brazo; nada de vestido ni pelo.
+  if(esBrazo&&!pelo)brazo=esBrazo*(1-sstep(0.725,0.775,h));
+  if(brazo>0){
+    const fore=sstep(0.60,0.65,h),hand=sstep(0.48,0.52,h);   // 1 = arriba de la articulación
+    add('wri'+S,brazo*(1-hand));add('elb'+S,brazo*hand*(1-fore));add('sho'+S,brazo*hand*fore);
+  }
+  const resto=1-brazo;if(resto<=1e-4)return W;
+  if(h>=0.5){
+    const cab=pelo?sstep(0.80,0.84,h):sstep(0.785,0.815,h);
+    add('head',resto*cab);
+    const tronco=resto*(1-cab),pel=1-sstep(0.50,0.58,h),ch=sstep(0.60,0.70,h);
+    add('pelvis',tronco*pel);add('chest',tronco*(1-pel)*ch);add('spine',tronco*(1-pel)*(1-ch));
+    return W;
+  }
+  // Piernas y vestido
+  const pel=sstep(0.40,0.50,h);add('pelvis',resto*pel);
+  const piernas=resto*(1-pel);if(piernas<=1e-4)return W;
+  const lados=[['R',sstep(-0.035,0.035,x)],['L',1-sstep(-0.035,0.035,x)]];
+  for(const [L,ws] of lados){if(ws<=1e-4)continue;const sx=L==='R'?1:-1;
+    const cerca=1-sstep(0.03,0.06,Math.hypot(x-sx*0.047,z-0.03));   // piel de la pierna/sandalias vs vestido amplio
+    const pie=h<0.075?1:cerca;
+    const knee=1-sstep(0.26,0.32,h),ank=1-sstep(0.05,0.08,h);
+    const w=piernas*ws;
+    add('hip'+L,w*(1-pie)+w*pie*(1-knee));add('knee'+L,w*pie*knee*(1-ank));add('ank'+L,w*pie*ank);}
+  return W;
+}
+function rigModelo(base){
+  if(base.rig)return base.rig;
+  const geo=base.geo.clone(),pos=geo.attributes.position,uv=geo.attributes.uv,n=pos.count;
+  const si=new Uint16Array(n*4),sw=new Float32Array(n*4),brazo=new Float32Array(n);
+  const deBrazo=new Set(['shoR','elbR','wriR','shoL','elbL','wriL'].map(k=>HI[k]));
+  const cols=[];for(let i=0;i<n;i++)cols[i]=base.pix&&uv?base.pix(uv.getX(i),uv.getY(i)):null;
+  for(let i=0;i<n;i++){
+    const col=cols[i];
+    const W=[...pesosVertice(pos.getX(i),pos.getY(i),pos.getZ(i),col,esBrazoGeo(pos.getX(i),pos.getY(i),pos.getZ(i)))].sort((a,b)=>b[1]-a[1]).slice(0,4);
+    let tot=W.reduce((a,b)=>a+b[1],0)||1;if(!W.length)W.push([HI.spine,1]);
+    W.forEach(([bi,w],k)=>{si[i*4+k]=bi;sw[i*4+k]=w/tot;if(deBrazo.has(bi))brazo[i]+=w/tot;});
+  }
+
+  geo.setAttribute('skinIndex',new THREE.Uint16BufferAttribute(si,4));geo.setAttribute('skinWeight',new THREE.Float32BufferAttribute(sw,4));
+  const mat=new THREE.MeshStandardMaterial({map:base.mapa,roughness:0.72,metalness:0,emissive:0xffffff,emissiveMap:base.mapa,emissiveIntensity:0.1,side:THREE.DoubleSide});
+  base.rig={geo,mat};return base.rig;
+}
+function esqueleto(){
+  const pos={root:[0,0,0],pelvis:ART.pelvis,spine:ART.spine,chest:ART.chest,head:ART.head,
+    shoR:ART.sho,elbR:ART.elb,wriR:ART.wri,shoL:[-ART.sho[0],ART.sho[1],ART.sho[2]],elbL:[-ART.elb[0],ART.elb[1],ART.elb[2]],wriL:[-ART.wri[0],ART.wri[1],ART.wri[2]],
+    hipR:ART.hip,kneeR:ART.knee,ankR:ART.ank,hipL:[-ART.hip[0],ART.hip[1],ART.hip[2]],kneeL:[-ART.knee[0],ART.knee[1],ART.knee[2]],ankL:[-ART.ank[0],ART.ank[1],ART.ank[2]]};
+  const padre={pelvis:'root',spine:'pelvis',chest:'spine',head:'chest',shoR:'chest',elbR:'shoR',wriR:'elbR',shoL:'chest',elbL:'shoL',wriL:'elbL',
+    hipR:'pelvis',kneeR:'hipR',ankR:'kneeR',hipL:'pelvis',kneeL:'hipL',ankL:'kneeL'};
+  const B={};for(const n of HUESOS){const b=new THREE.Bone();b.name=n;B[n]=b;}
+  for(const n of HUESOS){const p=pos[n];if(padre[n]){const q=pos[padre[n]];B[n].position.set(p[0]-q[0],p[1]-q[1],p[2]-q[2]);B[padre[n]].add(B[n]);}}
+  return{B,huesos:HUESOS.map(n=>B[n])};
+}
+function avatarConModelo(d){
+  const a=buildAvatar(d),H=a.huesos;
+  a.group.updateMatrixWorld(true);
+  const caja=new THREE.Box3().setFromObject(a.group),alto=(caja.max.y-caja.min.y)*0.98;
+  let vivo=null;
+  cargarModelo(d.modelo).then(base=>{
+    const {geo,mat}=rigModelo(base),{B,huesos}=esqueleto();
+    const sk=new THREE.SkinnedMesh(geo,mat);sk.scale.setScalar(alto);sk.castShadow=true;sk.frustumCulled=false;sk.add(B.root);sk.bind(new THREE.Skeleton(huesos));
+    
+    a.group.traverse(o=>{if(o.isMesh)o.visible=false;});   // el de formas sigue moviéndose, invisible (y sirve para tocarla)
+    a.group.add(sk);
+    const rp=B.pelvis.position.clone(),k=1/alto;
+    vivo=()=>{
+      B.pelvis.rotation.copy(H.pelvis.rotation);
+      B.pelvis.position.set(rp.x+H.pelvis.position.x*k,rp.y+(H.pelvis.position.y-0.76)*k,rp.z+H.pelvis.position.z*k);
+      B.spine.rotation.copy(H.torso.rotation);
+      const c=H.cabeza.rotation;B.head.rotation.set(c.x*0.7,c.y*0.6,c.z*0.7);
+      for(const b of H.brazos){const S=b.s>0?'R':'L';
+        const cl=(v,a)=>Math.max(-a,Math.min(a,v));
+        B['sho'+S].rotation.set(cl(b.sho.rotation.x*0.3,0.2),0,cl(b.sho.rotation.z-b.s*0.1,0.05));
+        B['elb'+S].rotation.set(cl((b.codo.rotation.x+0.12)*0.3,0.2),0,0);B['wri'+S].rotation.set(b.muneca.rotation.x*0.5,0,0);}
+      for(const p of H.piernas){const S=p.s>0?'R':'L';
+        B['hip'+S].rotation.set(p.hip.rotation.x*0.5,p.hip.rotation.y,p.hip.rotation.z*0.5);
+        B['knee'+S].rotation.set(p.rodilla.rotation.x*0.6,0,0);B['ank'+S].rotation.set(p.tobillo.rotation.x*0.6,0,0);}
+    };
+  }).catch(e=>console.warn('Modelo 3D no disponible, queda el avatar de formas:',d.modelo,e&&e.message));
+  const up=a.update;a.update=(dt,t,s)=>{up(dt,t,s);if(vivo)vivo();};
+  return a;
 }
 function lerp(a,b,t){return a+(b-a)*t;}
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x02030a);const camera=new THREE.PerspectiveCamera(45,innerWidth/innerHeight,0.05,9000);
@@ -454,10 +588,10 @@ const ROPA={
  Martín:{top:'camiseta',topC:0x2f7f9f,bottom:'jeans',bottomC:0x3a4a5e,zapC:0x2a2a2a},
  Clara:{top:'camisa',topC:0xf4ebe0,bottom:'falda',bottomC:0xb8653a,zapC:0xf2f2f2},
  Pablo:{top:'hoodie',topC:0x5f8f52,bottom:'pantalon',bottomC:0x4a4a4e,zapC:0x2a2a2a}};
-gente.forEach(d=>{if(ROPA[d.nombre])d.ropa=ROPA[d.nombre];});{const e=gente.find(x=>x.nombre==='Elena');if(e){e.peloEstilo='larga';e.pelo=0x5a341c;e.flequillo=false;}}
+gente.forEach(d=>{if(ROPA[d.nombre])d.ropa=ROPA[d.nombre];});{const e=gente.find(x=>x.nombre==='Elena');if(e){e.peloEstilo='larga';e.pelo=0x5a341c;e.flequillo=false;e.modelo='modelos/elena.glb';}}
 const personas=[];const R0=2.3;
 gente.forEach((d,i)=>{d.chispa=clamp(d.chispa||75,0,100);d.energia=60+Math.random()*40;d.hambre=Math.random()*40;d.animoh=60+Math.random()*40;d.memoria=d.memoria||[];d.pensamientos=d.pensamientos||[];d.fe=45+Math.random()*30;d.devFalso=0;d.alturaAdulta=d.altura;d.creencia=d.fe>=55?'el Creador':'duda';d.hijos=[];d.parejaId=null;d.edadVirtual=d.edad;d.ultimoRecuerdoT=0;
-  const a=buildAvatar(d);a.group.scale.setScalar(0.78*d.altura);const ang=(i/gente.length)*Math.PI*2+0.4;const p={a,d,nombre:d.nombre,x:Math.cos(ang)*R0,z:Math.sin(ang)*R0,yaw:Math.atan2(-Math.cos(ang),-Math.sin(ang))+Math.PI/2,estado:'quieto',t:1+Math.random()*4,vel:0,vmax:0.75+Math.random()*0.3,tx:0,tz:0,atasco:0,habla:false,escucha:false,mira:null,miraT:0,pareja:null,bub:null,edadPantalla:d.edad};
+  const a=d.modelo?avatarConModelo(d):buildAvatar(d);a.group.scale.setScalar(0.78*d.altura);const ang=(i/gente.length)*Math.PI*2+0.4;const p={a,d,nombre:d.nombre,x:Math.cos(ang)*R0,z:Math.sin(ang)*R0,yaw:Math.atan2(-Math.cos(ang),-Math.sin(ang))+Math.PI/2,estado:'quieto',t:1+Math.random()*4,vel:0,vmax:0.75+Math.random()*0.3,tx:0,tz:0,atasco:0,habla:false,escucha:false,mira:null,miraT:0,pareja:null,bub:null,edadPantalla:d.edad};
   p.yaw=Math.atan2(-p.x,-p.z);isla.add(a.group);a.group.position.set(p.x,mundoObj.groundY(p.x,p.z),p.z);a.group.rotation.y=p.yaw;personas.push(p);});
 /* ---------- 6. Tiempo, necesidades, rutinas y memoria ---------- */
 let mitosActivos=false;
